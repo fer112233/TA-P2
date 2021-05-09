@@ -8,6 +8,7 @@ library(cowplot)
 library(ggpubr)
 library(tibble)
 library(stringr)
+library(xlsx)
 
 Sys.setlocale(locale="en_US")
 
@@ -59,14 +60,21 @@ plot.decomposed.xts <- function(x, ...) {
       draw_plot(p4, x = 0, y = .23*3, width = 0.98, height = .24) +
       draw_label("Decomposition of the Time Series | Frequency 4 weeks", x=0.5, y=0.96)
   )
-  }
+}
 
+forecast_db <- data.frame()
+process <- 0
+starting_time <- now()
 # This will take a while to complete... almost 200 images to save to disk.
 for (prod_type in unique(db$product_type)) {
   for (re_id in unique(db$region_id)) {
+    
+    lbl <- paste(paste(paste("Demand of product category", prod_type), "in region id"), re_id)
+    process <- process + 1
+    cat(paste(paste("Computing", lbl)), "\n")
+    
     ts_subset <- db[db$product_type == as.numeric(prod_type),]
     ts_subset <- ts_subset[ts_subset$region_id == re_id,]
-    lbl <- paste(paste(paste("Demand of product category", prod_type), "in region id"), re_id)
     
     ts_subset$date <- as.Date(ts_subset$date)
     
@@ -135,6 +143,24 @@ for (prod_type in unique(db$product_type)) {
       forecast_export$.model = NULL
       forecast_export$Quantity = NULL
       
+      forecast_export$date_comp_1 = as.numeric(str_extract( forecast_export$`Period by Month Quarters from 2019-01-12 to 2020-12-10`, "^[0-9]+" ))
+      forecast_export$date_comp_2 = as.numeric(str_extract( forecast_export$`Period by Month Quarters from 2019-01-12 to 2020-12-10`, "[0-9]+$" ))
+      
+      ts_tibble_as$date_comp_1 = as.numeric(str_extract( ts_tibble_as$`Period by Month Quarters from 2019-01-12 to 2020-12-10`, "^[0-9]+" ))
+      ts_tibble_as$date_comp_2 = as.numeric(str_extract( ts_tibble_as$`Period by Month Quarters from 2019-01-12 to 2020-12-10`, "[0-9]+$" ))
+      
+      forecast_export$date_comp_1_abs = forecast_export$date_comp_1 - tail(ts_tibble_as, n=1)$date_comp_1
+      forecast_export$date_comp_2_abs = forecast_export$date_comp_2 - tail(ts_tibble_as, n=1)$date_comp_2
+      
+      last_record <- max(aggregated$week)
+      forecast_export$date <- last_record + weeks((forecast_export$date_comp_1_abs*4) + forecast_export$date_comp_2_abs)
+      
+      rowIndex <- nrow(forecast_db) + 1
+      forecast_db[rowIndex, "Product Type"] <- prod_type
+      forecast_db[rowIndex, "Region ID"] <- re_id
+      for (rown in 1:nrow(forecast_export)) {
+        forecast_db[rowIndex, format(forecast_export[rown, "date"][[1]], format="%Y-%m-%d")] <- forecast_export[rown, ".mean"][[1]]
+      }
       
       aggregated_plot <- ggdraw() +
         draw_plot(plot_std, x = 0, y = .46, width = .48/2, height = .46) +
@@ -145,6 +171,22 @@ for (prod_type in unique(db$product_type)) {
         draw_label(lbl, fontface='bold', x=0.5, y=0.96)
       
       ggsave(paste(paste("Output/", lbl),".png"), aggregated_plot, scale=1.3, height = 1080*(1/150), dpi=150, width = 1920*(1/150))
-    
+      
+      current_time <- now()
+      time_in_process <- interval(starting_time, current_time)
+      time_per_iteration_average <- seconds(time_in_process)/process
+      remaining_iterations <- length(unique(db$product_type))*length(unique(db$region_id))-process
+      
+      cat(paste(paste("  -> Overall Process:", paste(round(process*100/remaining_iterations, digits = 2), "%  ->  Estimated Time to Complete:")), paste(duration(round(as.numeric(time_per_iteration_average), digits = 0)*remaining_iterations, "seconds"), "\n")))
+      
   }
 }
+
+write.csv(forecast_db, "Demand_Forecast_SN.csv", row.names = FALSE)
+write.xlsx(forecast_db, "Demand_Forecast_SN.xlsx", sheetName = "3 Months aggregated by Week", col.names = TRUE, row.names = FALSE, append = FALSE)
+
+
+
+
+
+
