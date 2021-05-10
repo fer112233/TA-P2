@@ -63,6 +63,7 @@ plot.decomposed.xts <- function(x, ...) {
 }
 
 forecast_db <- data.frame()
+forecast_csv_db <- data.frame()
 process <- 0
 starting_time <- now()
 # This will take a while to complete... almost 200 images to save to disk.
@@ -160,6 +161,11 @@ for (prod_type in unique(db$product_type)) {
       forecast_db[rowIndex, "Region ID"] <- re_id
       for (rown in 1:nrow(forecast_export)) {
         forecast_db[rowIndex, format(forecast_export[rown, "date"][[1]], format="%Y-%m-%d")] <- forecast_export[rown, ".mean"][[1]]
+        rowIndex_csv <- nrow(forecast_csv_db) + 1
+        forecast_csv_db[rowIndex_csv, "product_type"] <- prod_type
+        forecast_csv_db[rowIndex_csv, "region_id"] <- re_id
+        forecast_csv_db[rowIndex_csv, "date"] <- format(forecast_export[rown, "date"][[1]], format="%Y-%m-%d")
+        forecast_csv_db[rowIndex_csv, "Quantity"] <- forecast_export[rown, ".mean"][[1]]
       }
       
       aggregated_plot <- ggdraw() +
@@ -175,14 +181,15 @@ for (prod_type in unique(db$product_type)) {
       current_time <- now()
       time_in_process <- interval(starting_time, current_time)
       time_per_iteration_average <- seconds(time_in_process)/process
-      remaining_iterations <- length(unique(db$product_type))*length(unique(db$region_id))-process
+      total_iterations <- length(unique(db$product_type))*length(unique(db$region_id))
+      remaining_iterations <- total_iterations-process
       
-      cat(paste(paste("  -> Overall Process:", paste(round(process*100/remaining_iterations, digits = 2), "%  ->  Estimated Time to Complete:")), paste(duration(round(as.numeric(time_per_iteration_average), digits = 0)*remaining_iterations, "seconds"), "\n")))
+      cat(paste(paste("  -> Overall Process:", paste(round(process*100/total_iterations, digits = 2), "%  ->  Estimated Time to Complete:")), paste(duration(round(as.numeric(time_per_iteration_average), digits = 0)*remaining_iterations, "seconds"), "\n")))
       
   }
 }
 
-write.csv(forecast_db, "Demand_Forecast_SN.csv", row.names = FALSE)
+write.csv(forecast_csv_db, "Demand_Forecast_SN.csv", row.names = FALSE)
 write.xlsx(forecast_db, "Demand_Forecast_SN.xlsx", sheetName = "3 Months aggregated by Week", col.names = TRUE, row.names = FALSE, append = FALSE)
 
 
